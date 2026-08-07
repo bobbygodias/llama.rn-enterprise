@@ -38,6 +38,8 @@ public class RNLlama {
     Pattern.compile("SNAPDRAGON\\s*8");
   private static final Pattern HEXAGON_CODENAME_PATTERN =
     Pattern.compile("(taro|kalama|pineapple|sun|lanai)");
+  private static final Pattern MALI_MEDIATEK_HINT_PATTERN =
+    Pattern.compile("(mali|mediatek|helio|dimensity|\\bmt\\d{4}\\b)", Pattern.CASE_INSENSITIVE);
 
   private final ReactApplicationContext reactContext;
 
@@ -192,12 +194,24 @@ public class RNLlama {
 
     boolean hasAdreno = hasAdrenoGpuHint();
     boolean hasHexagon = isHexagonSupported();
+    boolean hasMaliOrMediaTek = hasMaliOrMediaTekHint();
+    boolean hasVulkan = hasVulkanHardwareFeature(context);
 
     try {
       boolean jniLoaded = false;
       String loadedLib = "";
       if (isArm64V8a()) {
-        if (hasDotProd && hasI8mm && hasHexagon && hasAdreno) {
+        // PocketPal Enterprise variant for devices such as the Blackview
+        // MEGA 3 (Helio G99 / Mali-G57). The backend remains selectable at
+        // runtime; loading this library only makes the Vulkan device visible.
+        if (hasDotProd && hasVulkan && hasMaliOrMediaTek) {
+          if (tryLoadLibrary("rnllama_jni_v8_2_dotprod_vulkan")) {
+            jniLoaded = true;
+            loadedLib = "rnllama_jni_v8_2_dotprod_vulkan";
+          }
+        }
+
+        if (!jniLoaded && hasDotProd && hasI8mm && hasHexagon && hasAdreno) {
           if (tryLoadLibrary("rnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl")) {
             jniLoaded = true;
             loadedLib = "rnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl";
@@ -258,6 +272,7 @@ public class RNLlama {
 
       System.loadLibrary("rnllama");
       nativeSetLoadedLibrary(loadedLib);
+      Log.i(TAG, "Loaded native variant: " + loadedLib);
       libsLoaded = true;
       return true;
     } catch (UnsatisfiedLinkError e) {
@@ -315,6 +330,39 @@ public class RNLlama {
 
   private static String upperOrEmpty(String value) {
     return value == null ? "" : value.toUpperCase(Locale.ROOT);
+  }
+
+  private static boolean hasVulkanHardwareFeature(android.content.Context context) {
+    if (Build.VERSION.SDK_INT < 24) {
+      return false;
+    }
+
+    try {
+      android.content.pm.PackageManager packageManager = context.getPackageManager();
+      return packageManager.hasSystemFeature("android.hardware.vulkan.level") ||
+        packageManager.hasSystemFeature("android.hardware.vulkan.version");
+    } catch (Exception e) {
+      Log.w(TAG, "Unable to query Android Vulkan system features", e);
+      return false;
+    }
+  }
+
+  private static boolean hasMaliOrMediaTekHint() {
+    StringBuilder hints = new StringBuilder();
+    hints
+      .append(lowerOrEmpty(Build.HARDWARE)).append(' ')
+      .append(lowerOrEmpty(Build.BOARD)).append(' ')
+      .append(lowerOrEmpty(Build.MANUFACTURER)).append(' ')
+      .append(lowerOrEmpty(Build.BRAND)).append(' ')
+      .append(lowerOrEmpty(Build.MODEL));
+
+    if (Build.VERSION.SDK_INT >= 31) {
+      hints.append(' ')
+        .append(lowerOrEmpty(Build.SOC_MANUFACTURER)).append(' ')
+        .append(lowerOrEmpty(Build.SOC_MODEL));
+    }
+
+    return MALI_MEDIATEK_HINT_PATTERN.matcher(hints.toString()).find();
   }
 
   private static boolean hasHexagonCodenameHint() {
