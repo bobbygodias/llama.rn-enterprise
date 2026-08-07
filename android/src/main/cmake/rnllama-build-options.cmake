@@ -2,10 +2,15 @@
 #   android/src/main/CMakeLists.txt          (AGP / build-from-source)
 #   android/src/main/rnllama/CMakeLists.txt  (standalone, scripts/build-android.sh)
 #
-# A directory guard is intentional. The parent and rnllama subdirectory each
-# schedule a different deferred Enterprise Vulkan target after their local
-# build functions have been declared.
-include_guard(DIRECTORY)
+# Keep a guard local to each CMake directory. A normal include_guard(DIRECTORY)
+# also covers child directories, but the parent and rnllama child deliberately
+# need to execute different deferred Enterprise Vulkan hooks.
+get_property(RNLLAMA_BUILD_OPTIONS_ALREADY_INCLUDED
+    DIRECTORY PROPERTY RNLLAMA_BUILD_OPTIONS_INCLUDED SET)
+if (RNLLAMA_BUILD_OPTIONS_ALREADY_INCLUDED)
+    return()
+endif()
+set_property(DIRECTORY PROPERTY RNLLAMA_BUILD_OPTIONS_INCLUDED TRUE)
 
 # --- ccache ------------------------------------------------------------------
 # Each arm64 build compiles the whole llama.cpp tree once per CPU-feature
