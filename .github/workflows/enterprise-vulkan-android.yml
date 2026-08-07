@@ -1,0 +1,84 @@
+name: Enterprise Vulkan Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - enterprise/vulkan-arm64
+    paths:
+      - '.github/workflows/enterprise-vulkan-android.yml'
+      - 'android/**'
+      - 'cpp/**'
+      - 'scripts/bootstrap-enterprise-vulkan.sh'
+      - 'third_party/llama.cpp'
+  pull_request:
+    paths:
+      - '.github/workflows/enterprise-vulkan-android.yml'
+      - 'android/**'
+      - 'cpp/**'
+      - 'scripts/bootstrap-enterprise-vulkan.sh'
+      - 'third_party/llama.cpp'
+
+jobs:
+  build-arm64-vulkan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 3G
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: time_macros,include_file_mtime,include_file_ctime
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: arm64-v8a
+      # Keep the generic core because the upstream Java loader explicitly loads
+      # librnllama.so after the selected JNI variant. Vulkan remains the first
+      # attempted JNI on Mali/MediaTek hardware.
+      ORG_GRADLE_PROJECT_rnllamaVariants: rnllama,rnllama_v8_2_dotprod_vulkan
+
+    steps:
+      - name: Maximize build space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Vulkan host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers ccache
+          glslc --version
+          test -f /usr/include/spirv/unified1/spirv.hpp
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Sync prefixed Vulkan backend
+        run: bash scripts/bootstrap-enterprise-vulkan.sh
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-enterprise-vulkan-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-enterprise-vulkan-
+
+      - name: Setup Gradle cache
+        uses: burrunan/gradle-cache-action@v3
+        with:
+          gradle-version: wrapper
+
+      - name: Build ARM64 Vulkan diagnostic APK
+        run: |
+          npm run build:android
+          ccache --show-stats
+
+      - name: Upload diagnostic APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-rn-enterprise-vulkan-arm64-debug
+          path: example/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
