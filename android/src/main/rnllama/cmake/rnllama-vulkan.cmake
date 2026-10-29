@@ -40,9 +40,24 @@ function(rnllama_enable_vulkan target_name)
             "place glslc on PATH before building the Vulkan variant.")
     endif()
 
-    # ggml-vulkan.cpp uses SPIR-V enum definitions at compile time. They are
-    # header-only and may safely come from the host Vulkan SDK during an Android
-    # cross-build.
+    # ggml-vulkan.cpp uses Vulkan-Hpp and SPIR-V enum definitions at compile
+    # time. These headers are host-only build inputs, while the loader and C
+    # headers continue to come from the Android NDK.
+    find_path(
+        RNLLAMA_VULKAN_HPP_INCLUDE_DIR
+        NAMES vulkan/vulkan.hpp
+        HINTS
+            "$ENV{VULKAN_SDK}/include"
+            /usr/include
+            /usr/local/include
+        NO_CMAKE_FIND_ROOT_PATH
+    )
+    if (NOT RNLLAMA_VULKAN_HPP_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "Vulkan-Hpp was not found. Install Vulkan-Headers/libvulkan-dev or "
+            "provide it through VULKAN_SDK/include.")
+    endif()
+
     find_path(
         RNLLAMA_SPIRV_INCLUDE_DIR
         NAMES
@@ -181,6 +196,7 @@ function(rnllama_enable_vulkan target_name)
     target_include_directories(${target_name} PRIVATE
         "${VULKAN_GENERATED_DIR}"
         "${RNLLAMA_SPIRV_INCLUDE_DIR}"
+        "${RNLLAMA_VULKAN_HPP_INCLUDE_DIR}"
     )
     target_compile_definitions(${target_name} PRIVATE LM_GGML_USE_VULKAN)
     target_link_libraries(${target_name} PRIVATE "${RNLLAMA_VULKAN_LIBRARY}")
