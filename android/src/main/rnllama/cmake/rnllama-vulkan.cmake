@@ -76,6 +76,30 @@ function(rnllama_enable_vulkan target_name)
             "them through VULKAN_SDK/include.")
     endif()
 
+    # Android Clang cross-compiles against the NDK sysroot. CMake drops
+    # /usr/include from its compiler command as an implicit host include path,
+    # hiding Vulkan-Hpp/SPIR-V headers found there. Stage the specific SDK
+    # headers in the build tree rather than exposing all host system headers.
+    set(RNLLAMA_VULKAN_STAGED_INCLUDE_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/${target_name}-vulkan-sdk-include")
+    file(MAKE_DIRECTORY "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}")
+    file(COPY "${RNLLAMA_VULKAN_HPP_INCLUDE_DIR}/vulkan"
+        DESTINATION "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}")
+    if (EXISTS "${RNLLAMA_VULKAN_HPP_INCLUDE_DIR}/vk_video")
+        file(COPY "${RNLLAMA_VULKAN_HPP_INCLUDE_DIR}/vk_video"
+            DESTINATION "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}")
+    endif()
+    if (EXISTS "${RNLLAMA_SPIRV_INCLUDE_DIR}/spirv")
+        file(COPY "${RNLLAMA_SPIRV_INCLUDE_DIR}/spirv"
+            DESTINATION "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}")
+    elseif (EXISTS "${RNLLAMA_SPIRV_INCLUDE_DIR}/spirv-headers")
+        file(COPY "${RNLLAMA_SPIRV_INCLUDE_DIR}/spirv-headers"
+            DESTINATION "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}")
+    elseif (EXISTS "${RNLLAMA_SPIRV_INCLUDE_DIR}/spirv.hpp")
+        file(COPY "${RNLLAMA_SPIRV_INCLUDE_DIR}/spirv.hpp"
+            DESTINATION "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}")
+    endif()
+
     set(HOST_TOOLCHAIN_FILE "")
     if (CMAKE_CROSSCOMPILING)
         find_program(
@@ -197,6 +221,7 @@ function(rnllama_enable_vulkan target_name)
         "${VULKAN_GENERATED_DIR}"
         "${RNLLAMA_SPIRV_INCLUDE_DIR}"
         "${RNLLAMA_VULKAN_HPP_INCLUDE_DIR}"
+        "${RNLLAMA_VULKAN_STAGED_INCLUDE_DIR}"
     )
     target_compile_definitions(${target_name} PRIVATE LM_GGML_USE_VULKAN)
     target_link_libraries(${target_name} PRIVATE "${RNLLAMA_VULKAN_LIBRARY}")
