@@ -46,9 +46,10 @@ jobs:
       - name: Install Vulkan host toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y glslc spirv-headers ccache
+          sudo apt-get install -y glslc spirv-headers libvulkan-dev ccache
           glslc --version
           test -f /usr/include/spirv/unified1/spirv.hpp
+          test -f /usr/include/vulkan/vulkan.hpp
 
       - name: Setup project
         uses: ./.github/actions/setup
